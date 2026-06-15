@@ -26,7 +26,8 @@ def wardrobe():
               help='贴图文件路径（可多次指定）')
 @click.option('--preview', '-p', 'preview_path', type=click.Path(exists=True), help='预览图路径')
 @click.option('--copyright', 'copyright_source', help='版权来源')
-def add_item(name, category, gender, style, model_path, texture_paths, preview_path, copyright_source):
+@click.option('--project', 'project_id', type=int, help='所属项目ID')
+def add_item(name, category, gender, style, model_path, texture_paths, preview_path, copyright_source, project_id):
     """添加服装单品"""
     db = AssetDatabase()
     try:
@@ -37,7 +38,8 @@ def add_item(name, category, gender, style, model_path, texture_paths, preview_p
             style=style,
             model_path=model_path,
             texture_paths=list(texture_paths) if texture_paths else None,
-            preview_image=preview_path
+            preview_image=preview_path,
+            project_id=project_id
         )
         if copyright_source:
             with db._get_connection() as conn:
@@ -56,10 +58,11 @@ def add_item(name, category, gender, style, model_path, texture_paths, preview_p
               help='按类别筛选')
 @click.option('--gender', '-g', type=click.Choice(['male', 'female', 'neutral']), help='按性别筛选')
 @click.option('--style', '-s', help='按风格筛选')
-def list_items(category, gender, style):
+@click.option('--project', 'project_id', type=int, help='按项目筛选')
+def list_items(category, gender, style, project_id):
     """列出服装单品"""
     db = AssetDatabase()
-    items = db.list_wardrobe_items(category=category, gender=gender, style=style)
+    items = db.list_wardrobe_items(category=category, gender=gender, style=style, project_id=project_id)
 
     if not items:
         click.echo("未找到服装单品")

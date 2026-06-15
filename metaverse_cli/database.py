@@ -33,6 +33,28 @@ class AssetDatabase:
             cursor = conn.cursor()
 
             cursor.execute('''
+                CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    description TEXT,
+                    customer TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS project_assets (
+                    project_id INTEGER NOT NULL,
+                    asset_type TEXT NOT NULL,
+                    asset_id INTEGER NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                    PRIMARY KEY (project_id, asset_type, asset_id)
+                )
+            ''')
+
+            cursor.execute('''
                 CREATE TABLE IF NOT EXISTS avatars (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
@@ -43,10 +65,12 @@ class AssetDatabase:
                     copyright_source TEXT,
                     copyright_holder TEXT,
                     license_type TEXT,
+                    project_id INTEGER,
                     version TEXT DEFAULT '1.0',
                     status TEXT DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
                 )
             ''')
 
@@ -61,9 +85,11 @@ class AssetDatabase:
                     texture_paths TEXT,
                     preview_image TEXT,
                     copyright_source TEXT,
+                    project_id INTEGER,
                     version TEXT DEFAULT '1.0',
                     status TEXT DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
                 )
             ''')
 
@@ -109,10 +135,12 @@ class AssetDatabase:
                     fps INTEGER,
                     target_rig TEXT,
                     copyright_source TEXT,
+                    project_id INTEGER,
                     version TEXT DEFAULT '1.0',
                     status TEXT DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    validated BOOLEAN DEFAULT 0
+                    validated BOOLEAN DEFAULT 0,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
                 )
             ''')
 
@@ -125,7 +153,9 @@ class AssetDatabase:
                     lighting TEXT,
                     model_path TEXT,
                     preview_image TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    project_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
                 )
             ''')
 
@@ -248,19 +278,6 @@ class AssetDatabase:
                 return result
         return None
 
-    def add_avatar(self, name: str, gender: str = None, style: str = None,
-                   model_path: str = None, preview_image: str = None) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.execute(
-                '''INSERT INTO avatars (name, gender, style, model_path, preview_image)
-                   VALUES (?, ?, ?, ?, ?)''',
-                (name, gender, style, model_path, preview_image)
-            )
-            avatar_id = cursor.lastrowid
-            self._log_version(conn, 'avatar', avatar_id, '1.0', 'Initial creation')
-            self.log_operation('create_avatar', 'avatar', {'name': name, 'id': avatar_id}, conn=conn)
-            return avatar_id
-
     def update_avatar(self, avatar_id: int, **kwargs):
         with self._get_connection() as conn:
             old_data = conn.execute(
@@ -292,24 +309,6 @@ class AssetDatabase:
         with self._get_connection() as conn:
             row = conn.execute('SELECT * FROM avatars WHERE name = ?', (name,)).fetchone()
             return dict(row) if row else None
-
-    def list_avatars(self, gender: str = None, style: str = None, status: str = None) -> List[Dict]:
-        query = 'SELECT * FROM avatars WHERE 1=1'
-        params = []
-        if gender:
-            query += ' AND gender = ?'
-            params.append(gender)
-        if style:
-            query += ' AND style = ?'
-            params.append(style)
-        if status:
-            query += ' AND status = ?'
-            params.append(status)
-        query += ' ORDER BY name'
-
-        with self._get_connection() as conn:
-            rows = conn.execute(query, params).fetchall()
-            return [dict(row) for row in rows]
 
     def rename_avatar(self, avatar_id: int, new_name: str) -> bool:
         with self._get_connection() as conn:
@@ -358,22 +357,6 @@ class AssetDatabase:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def add_wardrobe_item(self, name: str, category: str, gender: str = None,
-                          style: str = None, model_path: str = None,
-                          texture_paths: List[str] = None, preview_image: str = None) -> int:
-        textures_json = json.dumps(texture_paths) if texture_paths else None
-        with self._get_connection() as conn:
-            cursor = conn.execute(
-                '''INSERT INTO wardrobe_items (name, category, gender, style, model_path, texture_paths, preview_image)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (name, category, gender, style, model_path, textures_json, preview_image)
-            )
-            item_id = cursor.lastrowid
-            self.log_operation('create_wardrobe_item', 'wardrobe',
-                               {'name': name, 'id': item_id, 'category': category},
-                               conn=conn)
-            return item_id
-
     def get_wardrobe_item(self, item_id: int) -> Optional[Dict]:
         with self._get_connection() as conn:
             row = conn.execute('SELECT * FROM wardrobe_items WHERE id = ?', (item_id,)).fetchone()
@@ -383,30 +366,6 @@ class AssetDatabase:
                     result['texture_paths'] = json.loads(result['texture_paths'])
                 return result
         return None
-
-    def list_wardrobe_items(self, category: str = None, gender: str = None, style: str = None) -> List[Dict]:
-        query = 'SELECT * FROM wardrobe_items WHERE 1=1'
-        params = []
-        if category:
-            query += ' AND category = ?'
-            params.append(category)
-        if gender:
-            query += ' AND gender = ?'
-            params.append(gender)
-        if style:
-            query += ' AND style = ?'
-            params.append(style)
-        query += ' ORDER BY category, name'
-
-        with self._get_connection() as conn:
-            rows = conn.execute(query, params).fetchall()
-            results = []
-            for row in rows:
-                r = dict(row)
-                if r['texture_paths']:
-                    r['texture_paths'] = json.loads(r['texture_paths'])
-                results.append(r)
-            return results
 
     def create_outfit(self, name: str, description: str = None, style: str = None,
                       gender: str = None, item_ids: List[int] = None) -> int:
@@ -459,41 +418,10 @@ class AssetDatabase:
             ).fetchall()
             return [dict(row) for row in rows]
 
-    def add_motion(self, name: str, file_path: str, category: str = None,
-                   duration: float = None, frame_count: int = None, fps: int = None,
-                   target_rig: str = None) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.execute(
-                '''INSERT INTO motions (name, file_path, category, duration, frame_count, fps, target_rig)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (name, file_path, category, duration, frame_count, fps, target_rig)
-            )
-            motion_id = cursor.lastrowid
-            self._log_version(conn, 'motion', motion_id, '1.0', 'Initial creation')
-            self.log_operation('create_motion', 'motion',
-                               {'name': name, 'id': motion_id, 'file_path': file_path},
-                               conn=conn)
-            return motion_id
-
     def get_motion(self, motion_id: int) -> Optional[Dict]:
         with self._get_connection() as conn:
             row = conn.execute('SELECT * FROM motions WHERE id = ?', (motion_id,)).fetchone()
             return dict(row) if row else None
-
-    def list_motions(self, category: str = None, validated: bool = None) -> List[Dict]:
-        query = 'SELECT * FROM motions WHERE 1=1'
-        params = []
-        if category:
-            query += ' AND category = ?'
-            params.append(category)
-        if validated is not None:
-            query += ' AND validated = ?'
-            params.append(1 if validated else 0)
-        query += ' ORDER BY name'
-
-        with self._get_connection() as conn:
-            rows = conn.execute(query, params).fetchall()
-            return [dict(row) for row in rows]
 
     def validate_motion(self, motion_id: int, is_valid: bool, notes: str = None):
         with self._get_connection() as conn:
@@ -507,21 +435,6 @@ class AssetDatabase:
             self.log_operation('validate_motion', 'motion',
                                {'motion_id': motion_id, 'valid': is_valid, 'notes': notes},
                                conn=conn)
-
-    def add_scene(self, name: str, description: str = None, environment: str = None,
-                  lighting: str = None, model_path: str = None, preview_image: str = None) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.execute(
-                '''INSERT INTO scenes (name, description, environment, lighting, model_path, preview_image)
-                   VALUES (?, ?, ?, ?, ?, ?)''',
-                (name, description, environment, lighting, model_path, preview_image)
-            )
-            scene_id = cursor.lastrowid
-            self._log_version(conn, 'scene', scene_id, '1.0', 'Initial creation')
-            self.log_operation('create_scene', 'scene',
-                               {'name': name, 'id': scene_id},
-                               conn=conn)
-            return scene_id
 
     def update_scene(self, scene_id: int, **kwargs):
         with self._get_connection() as conn:
@@ -549,11 +462,6 @@ class AssetDatabase:
         with self._get_connection() as conn:
             row = conn.execute('SELECT * FROM scenes WHERE id = ?', (scene_id,)).fetchone()
             return dict(row) if row else None
-
-    def list_scenes(self) -> List[Dict]:
-        with self._get_connection() as conn:
-            rows = conn.execute('SELECT * FROM scenes ORDER BY name').fetchall()
-            return [dict(row) for row in rows]
 
     def add_issue(self, asset_type: str, asset_id: int, issue_type: str,
                   description: str = None, severity: str = 'medium') -> int:
@@ -714,16 +622,6 @@ class AssetDatabase:
                 return '1.1'
         return '1.0'
 
-    def get_version_history(self, asset_type: str, asset_id: int) -> List[Dict]:
-        with self._get_connection() as conn:
-            rows = conn.execute(
-                '''SELECT * FROM version_history
-                   WHERE asset_type = ? AND asset_id = ?
-                   ORDER BY created_at DESC''',
-                (asset_type, asset_id)
-            ).fetchall()
-            return [dict(row) for row in rows]
-
     def find_duplicates(self, asset_type: str) -> List[List[Dict]]:
         with self._get_connection() as conn:
             if asset_type == 'avatar':
@@ -760,3 +658,339 @@ class AssetDatabase:
         shutil.copy2(self.db_path, final_path)
         self.log_operation('backup_database', None, {'backup_path': final_path})
         return final_path
+
+    def create_project(self, name: str, description: str = None,
+                       customer: str = None) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                '''INSERT INTO projects (name, description, customer)
+                   VALUES (?, ?, ?)''',
+                (name, description, customer)
+            )
+            project_id = cursor.lastrowid
+            self.log_operation('create_project', 'project',
+                               {'name': name, 'id': project_id}, conn=conn)
+            return project_id
+
+    def get_project(self, project_id: int) -> Optional[Dict]:
+        with self._get_connection() as conn:
+            row = conn.execute('SELECT * FROM projects WHERE id = ?', (project_id,)).fetchone()
+            return dict(row) if row else None
+
+    def get_project_by_name(self, name: str) -> Optional[Dict]:
+        with self._get_connection() as conn:
+            row = conn.execute('SELECT * FROM projects WHERE name = ?', (name,)).fetchone()
+            return dict(row) if row else None
+
+    def list_projects(self, status: str = None) -> List[Dict]:
+        query = 'SELECT * FROM projects WHERE 1=1'
+        params = []
+        if status:
+            query += ' AND status = ?'
+            params.append(status)
+        query += ' ORDER BY name'
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            results = []
+            for row in rows:
+                r = dict(row)
+                r['asset_counts'] = self._count_project_assets(conn, r['id'])
+                results.append(r)
+            return results
+
+    def _count_project_assets(self, conn, project_id: int) -> Dict:
+        counts = {}
+        for atype in ['avatar', 'wardrobe', 'motion', 'scene']:
+            table = atype + 's' if atype != 'wardrobe' else 'wardrobe_items'
+            row = conn.execute(
+                f'SELECT COUNT(*) as cnt FROM {table} WHERE project_id = ?',
+                (project_id,)
+            ).fetchone()
+            counts[atype] = row['cnt']
+        return counts
+
+    def update_project(self, project_id: int, **kwargs):
+        with self._get_connection() as conn:
+            old_data = conn.execute(
+                'SELECT * FROM projects WHERE id = ?', (project_id,)
+            ).fetchone()
+            if not old_data:
+                raise ValueError(f'Project {project_id} not found')
+            set_clause = ', '.join([f'{k} = ?' for k in kwargs.keys()])
+            values = list(kwargs.values()) + [project_id]
+            conn.execute(
+                f'UPDATE projects SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                values
+            )
+            self.log_operation('update_project', 'project',
+                               {'id': project_id, 'changes': kwargs}, conn=conn)
+
+    def assign_asset_to_project(self, project_id: int, asset_type: str, asset_id: int):
+        with self._get_connection() as conn:
+            conn.execute(
+                '''INSERT OR IGNORE INTO project_assets (project_id, asset_type, asset_id)
+                   VALUES (?, ?, ?)''',
+                (project_id, asset_type, asset_id)
+            )
+            table = self._asset_table_name(asset_type)
+            if table:
+                conn.execute(
+                    f'UPDATE {table} SET project_id = ? WHERE id = ?',
+                    (project_id, asset_id)
+                )
+            self.log_operation('assign_to_project', asset_type,
+                               {'project_id': project_id, 'asset_type': asset_type,
+                                'asset_id': asset_id}, conn=conn)
+
+    def unassign_asset_from_project(self, project_id: int, asset_type: str, asset_id: int):
+        with self._get_connection() as conn:
+            conn.execute(
+                '''DELETE FROM project_assets
+                   WHERE project_id = ? AND asset_type = ? AND asset_id = ?''',
+                (project_id, asset_type, asset_id)
+            )
+            table = self._asset_table_name(asset_type)
+            if table:
+                conn.execute(
+                    f'UPDATE {table} SET project_id = NULL WHERE id = ?',
+                    (asset_id,)
+                )
+            self.log_operation('unassign_from_project', asset_type,
+                               {'project_id': project_id, 'asset_type': asset_type,
+                                'asset_id': asset_id}, conn=conn)
+
+    def get_project_assets(self, project_id: int) -> Dict:
+        result = {'avatars': [], 'wardrobe': [], 'motions': [], 'scenes': []}
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                'SELECT * FROM avatars WHERE project_id = ? ORDER BY name',
+                (project_id,)
+            ).fetchall()
+            result['avatars'] = [dict(r) for r in rows]
+
+            rows = conn.execute(
+                'SELECT * FROM wardrobe_items WHERE project_id = ? ORDER BY category, name',
+                (project_id,)
+            ).fetchall()
+            for r in rows:
+                rd = dict(r)
+                if rd['texture_paths']:
+                    rd['texture_paths'] = json.loads(rd['texture_paths'])
+                result['wardrobe'].append(rd)
+
+            rows = conn.execute(
+                'SELECT * FROM motions WHERE project_id = ? ORDER BY name',
+                (project_id,)
+            ).fetchall()
+            result['motions'] = [dict(r) for r in rows]
+
+            rows = conn.execute(
+                'SELECT * FROM scenes WHERE project_id = ? ORDER BY name',
+                (project_id,)
+            ).fetchall()
+            result['scenes'] = [dict(r) for r in rows]
+
+        return result
+
+    def _asset_table_name(self, asset_type: str) -> Optional[str]:
+        mapping = {
+            'avatar': 'avatars',
+            'wardrobe': 'wardrobe_items',
+            'motion': 'motions',
+            'scene': 'scenes'
+        }
+        return mapping.get(asset_type)
+
+    def add_avatar(self, name: str, gender: str = None, style: str = None,
+                   model_path: str = None, preview_image: str = None,
+                   project_id: int = None) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                '''INSERT INTO avatars (name, gender, style, model_path, preview_image, project_id)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (name, gender, style, model_path, preview_image, project_id)
+            )
+            avatar_id = cursor.lastrowid
+            self._log_version(conn, 'avatar', avatar_id, '1.0', 'Initial creation')
+            self.log_operation('create_avatar', 'avatar', {'name': name, 'id': avatar_id}, conn=conn)
+            return avatar_id
+
+    def list_avatars(self, gender: str = None, style: str = None, status: str = None,
+                     project_id: int = None) -> List[Dict]:
+        query = 'SELECT * FROM avatars WHERE 1=1'
+        params = []
+        if gender:
+            query += ' AND gender = ?'
+            params.append(gender)
+        if style:
+            query += ' AND style = ?'
+            params.append(style)
+        if status:
+            query += ' AND status = ?'
+            params.append(status)
+        if project_id:
+            query += ' AND project_id = ?'
+            params.append(project_id)
+        query += ' ORDER BY name'
+
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+
+    def add_wardrobe_item(self, name: str, category: str, gender: str = None,
+                          style: str = None, model_path: str = None,
+                          texture_paths: List[str] = None, preview_image: str = None,
+                          project_id: int = None) -> int:
+        textures_json = json.dumps(texture_paths) if texture_paths else None
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                '''INSERT INTO wardrobe_items (name, category, gender, style, model_path, texture_paths, preview_image, project_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (name, category, gender, style, model_path, textures_json, preview_image, project_id)
+            )
+            item_id = cursor.lastrowid
+            self.log_operation('create_wardrobe_item', 'wardrobe',
+                               {'name': name, 'id': item_id, 'category': category},
+                               conn=conn)
+            return item_id
+
+    def list_wardrobe_items(self, category: str = None, gender: str = None,
+                            style: str = None, project_id: int = None) -> List[Dict]:
+        query = 'SELECT * FROM wardrobe_items WHERE 1=1'
+        params = []
+        if category:
+            query += ' AND category = ?'
+            params.append(category)
+        if gender:
+            query += ' AND gender = ?'
+            params.append(gender)
+        if style:
+            query += ' AND style = ?'
+            params.append(style)
+        if project_id:
+            query += ' AND project_id = ?'
+            params.append(project_id)
+        query += ' ORDER BY category, name'
+
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            results = []
+            for row in rows:
+                r = dict(row)
+                if r['texture_paths']:
+                    r['texture_paths'] = json.loads(r['texture_paths'])
+                results.append(r)
+            return results
+
+    def add_motion(self, name: str, file_path: str, category: str = None,
+                   duration: float = None, frame_count: int = None, fps: int = None,
+                   target_rig: str = None, project_id: int = None) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                '''INSERT INTO motions (name, file_path, category, duration, frame_count, fps, target_rig, project_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (name, file_path, category, duration, frame_count, fps, target_rig, project_id)
+            )
+            motion_id = cursor.lastrowid
+            self._log_version(conn, 'motion', motion_id, '1.0', 'Initial creation')
+            self.log_operation('create_motion', 'motion',
+                               {'name': name, 'id': motion_id, 'file_path': file_path},
+                               conn=conn)
+            return motion_id
+
+    def list_motions(self, category: str = None, validated: bool = None,
+                     project_id: int = None) -> List[Dict]:
+        query = 'SELECT * FROM motions WHERE 1=1'
+        params = []
+        if category:
+            query += ' AND category = ?'
+            params.append(category)
+        if validated is not None:
+            query += ' AND validated = ?'
+            params.append(1 if validated else 0)
+        if project_id:
+            query += ' AND project_id = ?'
+            params.append(project_id)
+        query += ' ORDER BY name'
+
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+
+    def add_scene(self, name: str, description: str = None, environment: str = None,
+                  lighting: str = None, model_path: str = None, preview_image: str = None,
+                  project_id: int = None) -> int:
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                '''INSERT INTO scenes (name, description, environment, lighting, model_path, preview_image, project_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (name, description, environment, lighting, model_path, preview_image, project_id)
+            )
+            scene_id = cursor.lastrowid
+            self._log_version(conn, 'scene', scene_id, '1.0', 'Initial creation')
+            self.log_operation('create_scene', 'scene',
+                               {'name': name, 'id': scene_id},
+                               conn=conn)
+            return scene_id
+
+    def list_scenes(self, project_id: int = None) -> List[Dict]:
+        query = 'SELECT * FROM scenes WHERE 1=1'
+        params = []
+        if project_id:
+            query += ' AND project_id = ?'
+            params.append(project_id)
+        query += ' ORDER BY name'
+        with self._get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_version_history(self, asset_type: str, asset_id: int) -> List[Dict]:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                '''SELECT * FROM version_history
+                   WHERE asset_type = ? AND asset_id = ?
+                   ORDER BY created_at DESC''',
+                (asset_type, asset_id)
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def rollback_to_version(self, asset_type: str, asset_id: int, version_id: int) -> bool:
+        with self._get_connection() as conn:
+            target = conn.execute(
+                'SELECT * FROM version_history WHERE id = ?',
+                (version_id,)
+            ).fetchone()
+            if not target or target['asset_type'] != asset_type or target['asset_id'] != asset_id:
+                return False
+
+            table = self._asset_table_name(asset_type)
+            if not table:
+                return False
+
+            current = conn.execute(
+                f'SELECT * FROM {table} WHERE id = ?', (asset_id,)
+            ).fetchone()
+            if not current:
+                return False
+
+            old_dict = dict(current)
+            changes = target['changes']
+            if changes and changes.startswith('Updated: '):
+                fields_str = changes[len('Updated: '):]
+                field_names = [f.strip() for f in fields_str.split(',')]
+                for field_name in field_names:
+                    if field_name in old_dict:
+                        conn.execute(
+                            f'UPDATE {table} SET {field_name} = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                            (asset_id,)
+                        )
+
+            next_version = self._get_next_version(conn, asset_type, asset_id)
+            self._log_version(conn, asset_type, asset_id, next_version,
+                              f'Rolled back to v{target["version"]}')
+            self.log_operation('rollback_version', asset_type,
+                               {'asset_id': asset_id, 'version_id': version_id,
+                                'target_version': target['version']},
+                               {'asset_id': asset_id, 'old_values': old_dict},
+                               conn=conn)
+            return True

@@ -19,7 +19,8 @@ def scene():
 @click.option('--lighting', '-l', help='光照方案，如：白天、夜晚、黄昏等')
 @click.option('--model', '-m', 'model_path', type=click.Path(exists=True), help='场景模型路径')
 @click.option('--preview', '-p', 'preview_path', type=click.Path(exists=True), help='预览图路径')
-def create_scene(name, description, environment, lighting, model_path, preview_path):
+@click.option('--project', 'project_id', type=int, help='所属项目ID')
+def create_scene(name, description, environment, lighting, model_path, preview_path, project_id):
     """创建新场景"""
     db = AssetDatabase()
     try:
@@ -29,7 +30,8 @@ def create_scene(name, description, environment, lighting, model_path, preview_p
             environment=environment,
             lighting=lighting,
             model_path=model_path,
-            preview_image=preview_path
+            preview_image=preview_path,
+            project_id=project_id
         )
         click.echo(f"[OK] 成功创建场景: {name} (ID: {scene_id})")
     except Exception as e:
@@ -38,12 +40,13 @@ def create_scene(name, description, environment, lighting, model_path, preview_p
 
 @scene.command('list')
 @click.option('--environment', '-e', help='按环境类型筛选')
+@click.option('--project', 'project_id', type=int, help='按项目筛选')
 @click.option('--format', '-f', 'output_format', type=click.Choice(['table', 'json']),
               default='table', help='输出格式')
-def list_scenes(environment, output_format):
+def list_scenes(environment, project_id, output_format):
     """列出所有场景"""
     db = AssetDatabase()
-    scenes = db.list_scenes()
+    scenes = db.list_scenes(project_id=project_id)
 
     if environment:
         scenes = [s for s in scenes if s['environment'] and environment.lower() in s['environment'].lower()]

@@ -226,15 +226,16 @@ def acceptance_report(delivery_id, output_path, output_format):
 
 
 @report.command('stats')
+@click.option('--project', 'project_id', type=int, help='按项目筛选')
 @click.option('--output', '-o', type=click.Path(), help='输出到文件')
-def show_stats(output):
+def show_stats(project_id, output):
     """显示资产统计信息"""
     db = AssetDatabase()
 
-    avatars = db.list_avatars()
-    wardrobe = db.list_wardrobe_items()
-    motions = db.list_motions()
-    scenes = db.list_scenes()
+    avatars = db.list_avatars(project_id=project_id)
+    wardrobe = db.list_wardrobe_items(project_id=project_id)
+    motions = db.list_motions(project_id=project_id)
+    scenes = db.list_scenes(project_id=project_id)
     issues = db.list_issues(fixed=False)
 
     with db._get_connection() as conn:

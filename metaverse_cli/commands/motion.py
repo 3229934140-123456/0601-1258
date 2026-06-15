@@ -25,7 +25,8 @@ def motion():
 @click.option('--frames', 'frame_count', type=int, help='帧数')
 @click.option('--fps', type=int, help='帧率')
 @click.option('--copyright', 'copyright_source', help='版权来源')
-def add_motion(name, file_path, category, target_rig, duration, frame_count, fps, copyright_source):
+@click.option('--project', 'project_id', type=int, help='所属项目ID')
+def add_motion(name, file_path, category, target_rig, duration, frame_count, fps, copyright_source, project_id):
     """添加动作文件"""
     db = AssetDatabase()
 
@@ -49,7 +50,8 @@ def add_motion(name, file_path, category, target_rig, duration, frame_count, fps
             duration=duration,
             frame_count=frame_count,
             fps=fps,
-            target_rig=target_rig
+            target_rig=target_rig,
+            project_id=project_id
         )
 
         if copyright_source:
@@ -68,9 +70,10 @@ def add_motion(name, file_path, category, target_rig, duration, frame_count, fps
 @click.option('--category', '-c', help='按类别筛选')
 @click.option('--validated', type=click.Choice(['yes', 'no', 'all']), default='all',
               help='按验证状态筛选')
+@click.option('--project', 'project_id', type=int, help='按项目筛选')
 @click.option('--format', '-f', 'output_format', type=click.Choice(['table', 'json']),
               default='table', help='输出格式')
-def list_motions(category, validated, output_format):
+def list_motions(category, validated, project_id, output_format):
     """列出动作文件"""
     db = AssetDatabase()
 
@@ -80,7 +83,7 @@ def list_motions(category, validated, output_format):
     elif validated == 'no':
         validated_flag = False
 
-    motions = db.list_motions(category=category, validated=validated_flag)
+    motions = db.list_motions(category=category, validated=validated_flag, project_id=project_id)
 
     if not motions:
         click.echo("未找到动作文件")

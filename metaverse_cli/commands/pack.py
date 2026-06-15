@@ -104,6 +104,7 @@ def generate_thumbnails_cmd(asset_type, sizes, output_dir, force):
 @pack.command('delivery')
 @click.option('--customer', required=True, help='客户名称')
 @click.option('--project', help='项目名称')
+@click.option('--project-id', 'project_id', type=int, help='按项目筛选交付资产')
 @click.option('--avatar', 'avatar_ids', multiple=True, type=int, help='角色ID（可多次指定）')
 @click.option('--wardrobe', 'wardrobe_ids', multiple=True, type=int, help='服装ID（可多次指定）')
 @click.option('--motion', 'motion_ids', multiple=True, type=int, help='动作ID（可多次指定）')
@@ -111,8 +112,9 @@ def generate_thumbnails_cmd(asset_type, sizes, output_dir, force):
 @click.option('--output-dir', default='./deliveries', help='输出根目录')
 @click.option('--zip', 'create_zip', is_flag=True, help='打包为ZIP文件')
 @click.option('--generate-thumbs', is_flag=True, help='生成缩略图')
-def create_delivery(customer, project, avatar_ids, wardrobe_ids, motion_ids,
-                    scene_ids, output_dir, create_zip, generate_thumbs):
+@click.option('--dry-run', is_flag=True, help='仅预览交付内容，不实际生成')
+def create_delivery(customer, project, project_id, avatar_ids, wardrobe_ids, motion_ids,
+                    scene_ids, output_dir, create_zip, generate_thumbs, dry_run):
     """打包交付目录"""
     db = AssetDatabase()
 
@@ -126,8 +128,43 @@ def create_delivery(customer, project, avatar_ids, wardrobe_ids, motion_ids,
     for sid in scene_ids:
         items.append(('scene', sid))
 
+    if project_id and not items:
+        assets = db.get_project_assets(project_id)
+        for a in assets.get('avatars', []):
+            items.append(('avatar', a['id']))
+        for w in assets.get('wardrobe_items', []):
+            items.append(('wardrobe', w['id']))
+        for m in assets.get('motions', []):
+            items.append(('motion', m['id']))
+        for s in assets.get('scenes', []):
+            items.append(('scene', s['id']))
+
     if not items:
         click.echo("[ERROR] 请至少指定一个要交付的资产", err=True)
+        return
+
+    all_assets = []
+
+    for atype, aid in items:
+        if atype == 'avatar':
+            asset = db.get_avatar(aid)
+            if asset:
+                all_assets.append(('avatar', asset))
+        elif atype == 'wardrobe':
+            asset = db.get_wardrobe_item(aid)
+            if asset:
+                all_assets.append(('wardrobe', asset))
+        elif atype == 'motion':
+            asset = db.get_motion(aid)
+            if asset:
+                all_assets.append(('motion', asset))
+        elif atype == 'scene':
+            asset = db.get_scene(aid)
+            if asset:
+                all_assets.append(('scene', asset))
+
+    if dry_run:
+        _dry_run_delivery(customer, project, all_assets)
         return
 
     delivery_id = db.create_delivery(
@@ -146,34 +183,24 @@ def create_delivery(customer, project, avatar_ids, wardrobe_ids, motion_ids,
     click.echo(f"创建交付包 #{delivery_id}")
     click.echo(f"输出目录: {delivery_dir}")
 
-    all_assets = []
     avatars_dir = os.path.join(delivery_dir, 'avatars')
     wardrobe_dir = os.path.join(delivery_dir, 'wardrobe')
     motions_dir = os.path.join(delivery_dir, 'motions')
     scenes_dir = os.path.join(delivery_dir, 'scenes')
 
-    for atype, aid in items:
-        if atype == 'avatar':
-            asset = db.get_avatar(aid)
-            if asset:
-                all_assets.append(('avatar', asset, avatars_dir))
-        elif atype == 'wardrobe':
-            asset = db.get_wardrobe_item(aid)
-            if asset:
-                all_assets.append(('wardrobe', asset, wardrobe_dir))
-        elif atype == 'motion':
-            asset = db.get_motion(aid)
-            if asset:
-                all_assets.append(('motion', asset, motions_dir))
-        elif atype == 'scene':
-            asset = db.get_scene(aid)
-            if asset:
-                all_assets.append(('scene', asset, scenes_dir))
+    type_dir_map = {
+        'avatar': avatars_dir,
+        'wardrobe': wardrobe_dir,
+        'motion': motions_dir,
+        'scene': scenes_dir
+    }
+
+    delivery_assets = [(atype, asset, type_dir_map[atype]) for atype, asset in all_assets]
 
     total_copied = 0
     total_failed = 0
 
-    for atype, asset, target_dir in all_assets:
+    for atype, asset, target_dir in delivery_assets:
         ensure_directory(target_dir)
         copied, failed = copy_assets_to_delivery([asset], target_dir)
         total_copied += len(copied)
@@ -184,7 +211,7 @@ def create_delivery(customer, project, avatar_ids, wardrobe_ids, motion_ids,
         thumbs_dir = os.path.join(delivery_dir, 'thumbnails')
         ensure_directory(thumbs_dir)
 
-        for atype, asset, target_dir in all_assets:
+        for atype, asset, target_dir in delivery_assets:
             preview = asset.get('preview_image')
             if preview and os.path.exists(preview):
                 thumb_path = os.path.join(
@@ -200,7 +227,7 @@ def create_delivery(customer, project, avatar_ids, wardrobe_ids, motion_ids,
         write_json_file(manifest_path, manifest['manifest'])
         click.echo(f"\n清单文件: {manifest_path}")
 
-    readme_content = _generate_delivery_readme(customer, project, all_assets, timestamp)
+    readme_content = _generate_delivery_readme(customer, project, delivery_assets, timestamp)
     readme_path = os.path.join(delivery_dir, 'README.txt')
     with open(readme_path, 'w', encoding='utf-8') as f:
         f.write(readme_content)
@@ -233,7 +260,7 @@ def create_delivery(customer, project, avatar_ids, wardrobe_ids, motion_ids,
     db.log_operation('create_delivery', None, {
         'delivery_id': delivery_id,
         'customer': customer,
-        'asset_count': len(all_assets)
+        'asset_count': len(delivery_assets)
     })
 
     click.echo(f"\n交付ID: {delivery_id}")
@@ -402,3 +429,68 @@ def _generate_delivery_readme(customer, project, assets, timestamp):
     lines.append("=" * 60)
 
     return '\n'.join(lines)
+
+
+def _dry_run_delivery(customer, project, all_assets):
+    click.echo(f"\n=== Dry-Run 交付预览 ===")
+    click.echo(f"客户: {customer}")
+    if project:
+        click.echo(f"项目: {project}")
+    click.echo(f"")
+
+    type_names = {'avatar': '角色', 'wardrobe': '服装', 'motion': '动作', 'scene': '场景'}
+    file_list = []
+    missing_paths = []
+    total_files = 0
+
+    for atype, asset in all_assets:
+        click.echo(f"[{type_names.get(atype, atype)}] {asset['name']} (ID: {asset['id']})")
+
+        model_path = asset.get('model_path') or asset.get('file_path')
+        if model_path:
+            exists = os.path.exists(model_path)
+            status = '[OK]' if exists else '[MISSING]'
+            click.echo(f"  {status} 模型: {model_path}")
+            if exists:
+                file_list.append(model_path)
+                total_files += 1
+            else:
+                missing_paths.append(model_path)
+
+        preview = asset.get('preview_image')
+        if preview:
+            exists = os.path.exists(preview)
+            status = '[OK]' if exists else '[MISSING]'
+            click.echo(f"  {status} 预览: {preview}")
+            if exists:
+                file_list.append(preview)
+                total_files += 1
+            else:
+                missing_paths.append(preview)
+
+        textures = asset.get('texture_paths')
+        if textures:
+            for tex in textures:
+                if tex:
+                    exists = os.path.exists(tex)
+                    status = '[OK]' if exists else '[MISSING]'
+                    click.echo(f"  {status} 贴图: {tex}")
+                    if exists:
+                        file_list.append(tex)
+                        total_files += 1
+                    else:
+                        missing_paths.append(tex)
+
+    click.echo(f"\n=== 统计 ===")
+    click.echo(f"资产数: {len(all_assets)}")
+    click.echo(f"可复制文件: {total_files}")
+
+    if missing_paths:
+        click.echo(f"\n=== 不存在的路径 ({len(missing_paths)}) ===")
+        for p in missing_paths:
+            click.echo(f"  [MISSING] {p}")
+        click.echo(f"\n[WARN] 存在 {len(missing_paths)} 个路径不存在，建议修复后再交付")
+    else:
+        click.echo(f"\n[OK] 所有路径检查通过，可以安全交付")
+
+    click.echo(f"\n提示: 去掉 --dry-run 参数即可正式生成交付目录")

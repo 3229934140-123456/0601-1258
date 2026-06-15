@@ -24,7 +24,8 @@ def avatar():
 @click.option('--style', '-s', help='风格标签，如：卡通、写实、科幻等')
 @click.option('--model', '-m', 'model_path', type=click.Path(exists=True), help='模型文件路径')
 @click.option('--preview', '-p', 'preview_path', type=click.Path(exists=True), help='预览图路径')
-def create_avatar(name, gender, style, model_path, preview_path):
+@click.option('--project', 'project_id', type=int, help='所属项目ID')
+def create_avatar(name, gender, style, model_path, preview_path, project_id):
     """创建新角色"""
     db = AssetDatabase()
     try:
@@ -33,7 +34,8 @@ def create_avatar(name, gender, style, model_path, preview_path):
             gender=gender,
             style=style,
             model_path=model_path,
-            preview_image=preview_path
+            preview_image=preview_path,
+            project_id=project_id
         )
         click.echo(f"[OK] 成功创建角色: {name} (ID: {avatar_id})")
     except Exception as e:
@@ -43,13 +45,14 @@ def create_avatar(name, gender, style, model_path, preview_path):
 @avatar.command('list')
 @click.option('--gender', '-g', type=click.Choice(['male', 'female', 'neutral']), help='按性别筛选')
 @click.option('--style', '-s', help='按风格筛选')
+@click.option('--project', 'project_id', type=int, help='按项目筛选')
 @click.option('--format', '-f', 'output_format', type=click.Choice(['table', 'json', 'csv']), default='table',
               help='输出格式')
 @click.option('--output', '-o', type=click.Path(), help='输出到文件')
-def list_avatars(gender, style, output_format, output):
+def list_avatars(gender, style, project_id, output_format, output):
     """列出所有角色"""
     db = AssetDatabase()
-    avatars = db.list_avatars(gender=gender, style=style)
+    avatars = db.list_avatars(gender=gender, style=style, project_id=project_id)
 
     if not avatars:
         click.echo("未找到角色")

@@ -180,13 +180,17 @@ def compare_versions(asset_type, asset_id, compare_with):
     db = AssetDatabase()
     history = db.get_version_history(asset_type, asset_id)
 
-    if len(history) < 2:
-        click.echo("版本历史不足，无法比较")
+    if not history:
+        click.echo("暂无版本历史")
         return
 
     click.echo(f"\n=== {asset_type} #{asset_id} 版本历史 ===")
     for i, v in enumerate(history):
-        click.echo(f"  [{i}] v{v['version']} - {v['changes']} ({v['created_at']})")
+        click.echo(f"  [ID:{v['id']}] v{v['version']} - {v['changes']} ({v['created_at']})")
+
+    if len(history) < 2:
+        click.echo("\n只有1个版本，无需比较")
+        return
 
     if compare_with is not None and compare_with < len(history):
         v1 = history[0]
@@ -194,7 +198,7 @@ def compare_versions(asset_type, asset_id, compare_with):
         click.echo(f"\n=== 比较 v{v1['version']} 与 v{v2['version']} ===")
         click.echo(f"v{v1['version']}: {v1['changes']}")
         click.echo(f"v{v2['version']}: {v2['changes']}")
-        click.echo(f"时间差: {v1['created_at']} → {v2['created_at']}")
+        click.echo(f"时间差: {v1['created_at']} -> {v2['created_at']}")
     else:
         if len(history) >= 2:
             v1 = history[0]
@@ -202,6 +206,86 @@ def compare_versions(asset_type, asset_id, compare_with):
             click.echo(f"\n=== 比较最新两个版本 ===")
             click.echo(f"v{v1['version']}: {v1['changes']}")
             click.echo(f"v{v2['version']}: {v2['changes']}")
+
+
+@check.command('rollback')
+@click.argument('asset_type', type=click.Choice(['avatar', 'wardrobe', 'motion', 'scene']))
+@click.argument('asset_id', type=int)
+@click.argument('version_id', type=int)
+def rollback_version(asset_type, asset_id, version_id):
+    """恢复到指定版本"""
+    db = AssetDatabase()
+
+    history = db.get_version_history(asset_type, asset_id)
+    target = None
+    for v in history:
+        if v['id'] == version_id:
+            target = v
+            break
+
+    if not target:
+        click.echo(f"[ERROR] 版本记录 {version_id} 不存在", err=True)
+        return
+
+    if target['asset_type'] != asset_type or target['asset_id'] != asset_id:
+        click.echo(f"[ERROR] 版本 {version_id} 不属于该资产", err=True)
+        return
+
+    click.echo(f"即将回滚 {asset_type} #{asset_id} 到 v{target['version']}")
+    click.echo(f"  版本描述: {target['changes']}")
+    click.echo(f"  版本时间: {target['created_at']}")
+
+    if not click.confirm("确认回滚？"):
+        return
+
+    if db.rollback_to_version(asset_type, asset_id, version_id):
+        click.echo(f"[OK] 已回滚到 v{target['version']}")
+    else:
+        click.echo(f"[ERROR] 回滚失败", err=True)
+
+
+@check.command('export-versions')
+@click.argument('asset_type', type=click.Choice(['avatar', 'wardrobe', 'motion', 'scene']))
+@click.argument('asset_id', type=int)
+@click.argument('output_path', type=click.Path())
+def export_versions(asset_type, asset_id, output_path):
+    """导出版本变化记录为JSON"""
+    db = AssetDatabase()
+    history = db.get_version_history(asset_type, asset_id)
+
+    if not history:
+        click.echo("暂无版本历史")
+        return
+
+    data = {
+        'asset_type': asset_type,
+        'asset_id': asset_id,
+        'total_versions': len(history),
+        'versions': []
+    }
+
+    for i, v in enumerate(history):
+        entry = {
+            'id': v['id'],
+            'version': v['version'],
+            'changes': v['changes'],
+            'created_at': v['created_at']
+        }
+        if i < len(history) - 1:
+            prev = history[i + 1]
+            entry['diff_from_previous'] = {
+                'from_version': prev['version'],
+                'from_changes': prev['changes'],
+                'to_version': v['version'],
+                'to_changes': v['changes']
+            }
+        data['versions'].append(entry)
+
+    if write_json_file(output_path, data):
+        click.echo(f"[OK] 版本记录已导出到 {output_path}")
+        click.echo(f"   共 {len(history)} 个版本")
+    else:
+        click.echo("[ERROR] 导出失败", err=True)
 
 
 @check.command('mark-issue')

@@ -9,6 +9,8 @@ from .commands.scene import scene
 from .commands.check import check
 from .commands.pack import pack
 from .commands.report import report
+from .commands.project import project
+from .commands.manifest import manifest
 
 
 @click.group(invoke_without_command=True)
@@ -28,6 +30,8 @@ def cli(ctx):
     check    - 资产检查（贴图缺失、重复、版本差异、问题标记）
     pack     - 打包交付（缩略图、交付包、撤销、备份）
     report   - 报告生成（客户清单、验收报告、统计信息）
+    project  - 项目工作区（创建项目、归集资产、按项目筛选）
+    manifest - 批量导入（从CSV/JSON清单一次性导入多种资产）
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -40,6 +44,8 @@ cli.add_command(scene, 'scene')
 cli.add_command(check, 'check')
 cli.add_command(pack, 'pack')
 cli.add_command(report, 'report')
+cli.add_command(project, 'project')
+cli.add_command(manifest, 'manifest')
 
 
 def main():
