@@ -4,8 +4,8 @@ from pathlib import Path
 
 from ..database import AssetDatabase
 from ..utils.file_ops import (
-    scan_directory_for_assets, validate_motion_file,
-    write_json_file, is_motion_file
+    find_files_by_extension, validate_motion_file,
+    write_json_file, is_motion_file, SUPPORTED_MOTION_EXTENSIONS
 )
 
 
@@ -114,11 +114,11 @@ def list_motions(category, validated, output_format):
 @click.option('--dry-run', is_flag=True, help='仅预览')
 def import_motions(directory, category, target_rig, auto_validate, dry_run):
     """从目录批量导入动作"""
-    assets = scan_directory_for_assets(directory)
-    motion_files = assets['motions']
+    motion_files = find_files_by_extension(directory, SUPPORTED_MOTION_EXTENSIONS)
 
     if not motion_files:
         click.echo("未找到动作文件")
+        click.echo(f"支持的格式: {', '.join(sorted(SUPPORTED_MOTION_EXTENSIONS))}")
         return
 
     click.echo(f"发现 {len(motion_files)} 个动作文件")

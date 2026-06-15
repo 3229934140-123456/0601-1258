@@ -150,7 +150,7 @@ def show_scene(scene_id):
 @click.option('--lighting', help='光照方案')
 @click.option('--model', 'model_path', type=click.Path(exists=True), help='场景模型路径')
 @click.option('--preview', 'preview_path', type=click.Path(exists=True), help='预览图路径')
-def update_scene(scene_id, name, description, environment, lighting, model_path, preview_path):
+def update_scene_cmd(scene_id, name, description, environment, lighting, model_path, preview_path):
     """更新场景信息"""
     db = AssetDatabase()
     scene = db.get_scene(scene_id)
@@ -177,13 +177,8 @@ def update_scene(scene_id, name, description, environment, lighting, model_path,
         return
 
     try:
-        with db._get_connection() as conn:
-            set_clause = ', '.join([f'{k} = ?' for k in updates.keys()])
-            values = list(updates.values()) + [scene_id]
-            conn.execute(f'UPDATE scenes SET {set_clause} WHERE id = ?', values)
+        db.update_scene(scene_id, **updates)
         click.echo(f"[OK] 已更新场景信息")
-        db.log_operation('update_scene', 'scene',
-                         {'scene_id': scene_id, 'changes': updates})
     except Exception as e:
         click.echo(f"[ERROR] 更新失败: {e}", err=True)
 

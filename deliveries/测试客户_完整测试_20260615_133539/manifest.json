@@ -1,0 +1,64 @@
+{
+  "avatars": [
+    {
+      "id": 1,
+      "name": "主角英雄",
+      "gender": "female",
+      "style": null,
+      "preview_image": "test_assets\\avatars\\hero_preview.png",
+      "model_path": "test_assets\\avatars\\hero_model.fbx",
+      "copyright_source": "自研",
+      "copyright_holder": "元宇宙工作室",
+      "license_type": "CC-BY",
+      "version": "1.0",
+      "status": "active",
+      "created_at": "2026-06-15 05:32:43",
+      "updated_at": "2026-06-15 05:33:15"
+    }
+  ],
+  "wardrobe": [
+    {
+      "id": 1,
+      "name": "衬衫",
+      "category": "top",
+      "gender": "neutral",
+      "style": null,
+      "model_path": "test_assets\\wardrobe\\shirt_model.obj",
+      "texture_paths": "[\"test_assets\\\\textures\\\\shirt_albedo.png\", \"test_assets\\\\textures\\\\shirt_normal.png\"]",
+      "preview_image": "test_assets\\wardrobe\\shirt_preview.jpg",
+      "copyright_source": null,
+      "version": "1.0",
+      "status": "active",
+      "created_at": "2026-06-15 05:33:29"
+    }
+  ],
+  "motions": [
+    {
+      "id": 3,
+      "name": "walk",
+      "category": null,
+      "file_path": "test_assets\\motions\\walk.bvh",
+      "duration": null,
+      "frame_count": 100,
+      "fps": 30.030030030030026,
+      "target_rig": null,
+      "copyright_source": null,
+      "version": "1.0",
+      "status": "active",
+      "created_at": "2026-06-15 05:30:17",
+      "validated": 1
+    }
+  ],
+  "scenes": [
+    {
+      "id": 1,
+      "name": "森林场景",
+      "description": null,
+      "environment": "室外",
+      "lighting": "白天",
+      "model_path": "test_assets\\scenes\\forest_scene.glb",
+      "preview_image": "test_assets\\scenes\\forest_preview.jpg",
+      "created_at": "2026-06-15 05:35:11"
+    }
+  ]
+}

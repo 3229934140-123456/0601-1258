@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-06-15T13:36:57.663906",
+  "avatars": {
+    "total": 1,
+    "by_gender": {
+      "female": 1
+    },
+    "by_style": {
+      "unknown": 1
+    }
+  },
+  "wardrobe": {
+    "total": 1,
+    "by_category": {
+      "top": 1
+    },
+    "outfits": 0
+  },
+  "motions": {
+    "total": 3,
+    "by_category": {
+      "unknown": 3
+    },
+    "validated": 1,
+    "validation_rate": "33.3%"
+  },
+  "scenes": {
+    "total": 1
+  },
+  "issues": {
+    "open": 0,
+    "by_severity": {}
+  },
+  "deliveries": {
+    "total": 1
+  },
+  "tags": {
+    "total": 0
+  }
+}

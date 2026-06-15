@@ -1,0 +1,21 @@
+{
+  "exported_at": null,
+  "count": 1,
+  "avatars": [
+    {
+      "id": 1,
+      "name": "主角英雄",
+      "gender": "female",
+      "style": null,
+      "preview_image": "test_assets\\avatars\\hero_preview.png",
+      "model_path": "test_assets\\avatars\\hero_model.fbx",
+      "copyright_source": "自研",
+      "copyright_holder": "元宇宙工作室",
+      "license_type": "CC-BY",
+      "version": "1.0",
+      "status": "active",
+      "created_at": "2026-06-15 05:32:43",
+      "updated_at": "2026-06-15 05:33:15"
+    }
+  ]
+}

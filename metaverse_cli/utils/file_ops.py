@@ -208,7 +208,9 @@ def read_json_file(file_path: str) -> Optional[Dict]:
 
 def write_json_file(file_path: str, data: Dict, indent: int = 2) -> bool:
     try:
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        dir_path = os.path.dirname(file_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=indent, ensure_ascii=False)
         return True
@@ -269,13 +271,15 @@ def validate_motion_file(file_path: str) -> Dict:
     return result
 
 
-def copy_assets_to_delivery(assets: List[Dict], delivery_dir: str) -> Tuple[List[str], List[str]]:
+def copy_assets_to_delivery(assets: List[Dict], delivery_dir: str,
+                            asset_type: str = None) -> Tuple[List[str], List[str]]:
     copied = []
     failed = []
 
     for asset in assets:
-        if 'file_path' in asset and asset['file_path']:
-            src = asset['file_path']
+        model_path = asset.get('model_path') or asset.get('file_path')
+        if model_path and os.path.exists(model_path):
+            src = model_path
             dst = os.path.join(delivery_dir, os.path.basename(src))
             if safe_copy_file(src, dst):
                 copied.append(dst)
@@ -285,14 +289,14 @@ def copy_assets_to_delivery(assets: List[Dict], delivery_dir: str) -> Tuple[List
         if 'texture_paths' in asset and asset['texture_paths']:
             texture_dir = os.path.join(delivery_dir, 'textures')
             for tex_path in asset['texture_paths']:
-                if os.path.exists(tex_path):
+                if tex_path and os.path.exists(tex_path):
                     dst = os.path.join(texture_dir, os.path.basename(tex_path))
                     if safe_copy_file(tex_path, dst):
                         copied.append(dst)
                     else:
                         failed.append(tex_path)
 
-        if 'preview_image' in asset and asset['preview_image']:
+        if asset.get('preview_image') and os.path.exists(asset['preview_image']):
             preview_dir = os.path.join(delivery_dir, 'previews')
             src = asset['preview_image']
             dst = os.path.join(preview_dir, os.path.basename(src))

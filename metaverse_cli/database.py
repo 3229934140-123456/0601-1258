@@ -274,6 +274,10 @@ class AssetDatabase:
             values = list(kwargs.values()) + [avatar_id]
             conn.execute(f'UPDATE avatars SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?', values)
 
+            next_version = self._get_next_version(conn, 'avatar', avatar_id)
+            changes_desc = ', '.join(kwargs.keys())
+            self._log_version(conn, 'avatar', avatar_id, next_version, f'Updated: {changes_desc}')
+
             self.log_operation('update_avatar', 'avatar',
                                {'id': avatar_id, 'changes': kwargs},
                                {'id': avatar_id, 'old_values': old_dict},
@@ -314,6 +318,8 @@ class AssetDatabase:
                 return False
             conn.execute('UPDATE avatars SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
                         (new_name, avatar_id))
+            next_version = self._get_next_version(conn, 'avatar', avatar_id)
+            self._log_version(conn, 'avatar', avatar_id, next_version, f'Renamed: {old["name"]} -> {new_name}')
             self.log_operation('rename_avatar', 'avatar',
                                {'id': avatar_id, 'new_name': new_name},
                                {'id': avatar_id, 'old_name': old['name']},
@@ -463,6 +469,7 @@ class AssetDatabase:
                 (name, file_path, category, duration, frame_count, fps, target_rig)
             )
             motion_id = cursor.lastrowid
+            self._log_version(conn, 'motion', motion_id, '1.0', 'Initial creation')
             self.log_operation('create_motion', 'motion',
                                {'name': name, 'id': motion_id, 'file_path': file_path},
                                conn=conn)
@@ -494,6 +501,9 @@ class AssetDatabase:
                 'UPDATE motions SET validated = ? WHERE id = ?',
                 (1 if is_valid else 0, motion_id)
             )
+            next_version = self._get_next_version(conn, 'motion', motion_id)
+            status = 'passed' if is_valid else 'failed'
+            self._log_version(conn, 'motion', motion_id, next_version, f'Validation {status}')
             self.log_operation('validate_motion', 'motion',
                                {'motion_id': motion_id, 'valid': is_valid, 'notes': notes},
                                conn=conn)
@@ -507,10 +517,33 @@ class AssetDatabase:
                 (name, description, environment, lighting, model_path, preview_image)
             )
             scene_id = cursor.lastrowid
+            self._log_version(conn, 'scene', scene_id, '1.0', 'Initial creation')
             self.log_operation('create_scene', 'scene',
                                {'name': name, 'id': scene_id},
                                conn=conn)
             return scene_id
+
+    def update_scene(self, scene_id: int, **kwargs):
+        with self._get_connection() as conn:
+            old_data = conn.execute(
+                'SELECT * FROM scenes WHERE id = ?', (scene_id,)
+            ).fetchone()
+            if not old_data:
+                raise ValueError(f'Scene {scene_id} not found')
+
+            old_dict = dict(old_data)
+            set_clause = ', '.join([f'{k} = ?' for k in kwargs.keys()])
+            values = list(kwargs.values()) + [scene_id]
+            conn.execute(f'UPDATE scenes SET {set_clause} WHERE id = ?', values)
+
+            next_version = self._get_next_version(conn, 'scene', scene_id)
+            changes_desc = ', '.join(kwargs.keys())
+            self._log_version(conn, 'scene', scene_id, next_version, f'Updated: {changes_desc}')
+
+            self.log_operation('update_scene', 'scene',
+                               {'id': scene_id, 'changes': kwargs},
+                               {'id': scene_id, 'old_values': old_dict},
+                               conn=conn)
 
     def get_scene(self, scene_id: int) -> Optional[Dict]:
         with self._get_connection() as conn:
@@ -665,6 +698,21 @@ class AssetDatabase:
                VALUES (?, ?, ?, ?)''',
             (asset_type, asset_id, version, changes)
         )
+
+    def _get_next_version(self, conn, asset_type: str, asset_id: int) -> str:
+        row = conn.execute(
+            '''SELECT version FROM version_history
+               WHERE asset_type = ? AND asset_id = ?
+               ORDER BY id DESC LIMIT 1''',
+            (asset_type, asset_id)
+        ).fetchone()
+        if row:
+            try:
+                major, minor = map(int, row['version'].split('.'))
+                return f"{major}.{minor + 1}"
+            except (ValueError, IndexError):
+                return '1.1'
+        return '1.0'
 
     def get_version_history(self, asset_type: str, asset_id: int) -> List[Dict]:
         with self._get_connection() as conn:
